@@ -1,16 +1,12 @@
 import math
 import os
-import threading
 import numba
 import numpy as np
-from flask import Flask, request, abort, send_file, jsonify
+from flask import Flask, request, abort, send_file
 from PIL import Image
 import io
 
 app = Flask(__name__)
-
-_active_renders = 0
-_active_lock    = threading.Lock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _LN2     = math.log(2.0)
@@ -101,17 +97,8 @@ def index():
     return send_file(os.path.join(BASE_DIR, 'index.html'))
 
 
-@app.route('/status')
-def pod_status():
-    return jsonify(
-        active=_active_renders,
-        pod=os.environ.get('POD_NAME', 'unknown'),
-    )
-
-
 @app.route('/render')
 def render():
-    global _active_renders
     try:
         posx   = float(request.args.get('posx',   -0.5))
         posy   = float(request.args.get('posy',    0.0))
@@ -127,14 +114,7 @@ def render():
     except (TypeError, ValueError):
         abort(400)
 
-    with _active_lock:
-        _active_renders += 1
-    try:
-        png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight)
-    finally:
-        with _active_lock:
-            _active_renders -= 1
-
+    png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight)
     return png, 200, {
         'Content-Type':  'image/png',
         'Cache-Control': 'no-store',

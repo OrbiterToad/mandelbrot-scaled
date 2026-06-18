@@ -158,7 +158,7 @@
 
     function scheduleRender() {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(doFetch, 100);
+      debounceTimer = setTimeout(doFetch, 10);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -264,15 +264,7 @@
           const shortName = p.name.replace(/^mandelbrot-worker-/, '');
           const cls = p.ready ? 'ready' : (p.phase === 'Failed' ? 'failed' : 'pending');
           const dot = p.ready ? '●' : '○';
-          let activity = '';
-          if (p.active === null || p.active === undefined) {
-            activity = '<span style="opacity:0.4">  —</span>';
-          } else if (p.active > 0) {
-            activity = `  <span style="color:rgba(255,210,0,0.9)">rendering (${p.active})</span>`;
-          } else {
-            activity = '  <span style="opacity:0.35">idle</span>';
-          }
-          html += `<div class="pod ${cls}">${dot} ${shortName}${activity}</div>`;
+          html += `<div class="pod ${cls}">${dot} ${shortName} &nbsp; ${p.phase}</div>`;
         }
         podsEl.innerHTML = html;
       } catch (_) {}
