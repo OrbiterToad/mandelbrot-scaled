@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandelbrot
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mandelbrot
+  template:
+    metadata:
+      labels:
+        app: mandelbrot
+    spec:
+      containers:
+        - name: mandelbrot
+          image: mandelbrot:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              memory: 512Mi   # NumPy arrays per render ~100 MB at 1920x1080
+              cpu: 500m

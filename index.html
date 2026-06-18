@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #info {
+      position: fixed;
+      bottom: 14px;
+      left: 14px;
+      color: rgba(0, 210, 170, 0.5);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="info">zoom 1.00×</div>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx    = canvas.getContext('2d');
+    const info   = document.getElementById('info');
+
+    // ── View state (updated on every scroll) ─────────────────────────────────
+    let viewX = -0.5, viewY = 0.0, zoomFactor = 1.0;
+
+    // ── Render state (updated only when a new image arrives) ─────────────────
+    // The last fetched image and the view params it was rendered at.
+    let renderX = -0.5, renderY = 0.0, renderZoom = 1.0;
+    let renderedImg = null;
+
+    // ── Fetch state ───────────────────────────────────────────────────────────
+    let fetchPending  = false;
+    let debounceTimer = null;
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function resize() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    // Draw the stored image transformed to match the current view.
+    // Image was rendered at (renderX, renderY, renderZoom); canvas shows (viewX, viewY, zoomFactor).
+    function redraw() {
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      if (!renderedImg) return;
+
+      // complex units per canvas pixel for current view
+      const canvasScale = 3.5 / (zoomFactor * W);
+      // complex units per render pixel (render is always 500 px wide)
+      const imgScale    = 3.5 / (renderZoom * 500);
+
+      // Size of the render image projected onto the canvas (square image → square draw)
+      const drawSize = 500 * imgScale / canvasScale;  // = W * zoomFactor / renderZoom
+
+      // Canvas pixel where the top-left corner of the render image belongs.
+      // Image center corresponds to complex (renderX, renderY); positive imaginary is UP.
+      const destX = W / 2 + (renderX - viewX) / canvasScale - drawSize / 2;
+      const destY = H / 2 - (renderY - viewY) / canvasScale - drawSize / 2;
+
+      ctx.drawImage(renderedImg, destX, destY, drawSize, drawSize);
+    }
+
+    // ── Fetch logic ───────────────────────────────────────────────────────────
+
+    async function doFetch() {
+      if (fetchPending) return;
+      fetchPending = true;
+      info.textContent = zoomLabel() + ' …';
+
+      // Capture view state at request time so we know what the image represents.
+      const fx = viewX, fy = viewY, fz = zoomFactor;
+
+      try {
+        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=500&height=500`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(resp.status);
+
+        const blob   = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+
+        await new Promise((resolve, reject) => {
+          const img  = new Image();
+          img.onload = () => {
+            // Update render state — this is what the image represents.
+            renderX    = fx;
+            renderY    = fy;
+            renderZoom = fz;
+            renderedImg = img;
+            URL.revokeObjectURL(objUrl);
+            redraw();
+            resolve();
+          };
+          img.onerror = reject;
+          img.src = objUrl;
+        });
+      } catch (_) { /* keep old frame */ }
+
+      fetchPending = false;
+      info.textContent = zoomLabel();
+
+      // If the view has changed enough since this fetch started, go again immediately
+      // (no extra debounce — we just finished waiting for a render).
+      if (needsRender()) doFetch();
+    }
+
+    function needsRender() {
+      return zoomFactor > renderZoom * 1.5;
+    }
+
+    function scheduleRender() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(doFetch, 500);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    function zoomLabel() {
+      const z = zoomFactor;
+      return 'zoom ' + (z < 10 ? z.toFixed(2) : z < 1000 ? z.toFixed(1) : z.toFixed(0)) + '×';
+    }
+
+    window.addEventListener('resize', () => { resize(); redraw(); });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+
+      const mx = e.clientX;
+      // Flip DOM y so positive imaginary points up (matches server row-0 = top = max imag).
+      const my = canvas.height - e.clientY;
+
+      // Complex coords under cursor before rescale.
+      const canvasScale = 3.5 / (zoomFactor * canvas.width);
+      const mcx = viewX + (mx - canvas.width  * 0.5) * canvasScale;
+      const mcy = viewY + (my - canvas.height * 0.5) * canvasScale;
+
+      zoomFactor /= factor;   // zoom in → zoomFactor rises (factor < 1 on scroll-up)
+      // wait, scroll up = zoom in, deltaY < 0, factor = 1/1.15 < 1, so zoomFactor /= (1/1.15) = *1.15 ✓
+
+      const newCanvasScale = 3.5 / (zoomFactor * canvas.width);
+
+      // Keep cursor point fixed in complex space.
+      viewX = mcx - (mx - canvas.width  * 0.5) * newCanvasScale;
+      viewY = mcy - (my - canvas.height * 0.5) * newCanvasScale;
+
+      redraw();
+      info.textContent = zoomLabel();
+
+      if (needsRender()) scheduleRender();
+    }, { passive: false });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    resize();
+    doFetch();   // immediate first render, no debounce
+  </script>
+</body>
+</html>
