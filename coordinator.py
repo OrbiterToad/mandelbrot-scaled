@@ -3,7 +3,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests as http
-from flask import Flask, request, abort, send_file
+from flask import Flask, request, abort, send_file, jsonify
 from PIL import Image
 
 app = Flask(__name__)
@@ -12,6 +12,10 @@ BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 WORKER_URL  = os.environ.get('WORKER_URL', 'http://mandelbrot-worker')
 NUM_STRIPS  = 4
 _MAX_DIM    = 1920
+
+_K8S_API    = 'https://kubernetes.default.svc'
+_TOKEN_FILE = '/var/run/secrets/kubernetes.io/serviceaccount/token'
+_CA_FILE    = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
 
 
 def _fetch_strip(posx, posy, zoom, width, yoffset, strip_height, fullheight):
@@ -24,6 +28,33 @@ def _fetch_strip(posx, posy, zoom, width, yoffset, strip_height, fullheight):
     resp = http.get(url, timeout=120)
     resp.raise_for_status()
     return yoffset, Image.open(io.BytesIO(resp.content))
+
+
+@app.route('/status')
+def status():
+    try:
+        token = open(_TOKEN_FILE).read().strip()
+        resp  = http.get(
+            f'{_K8S_API}/api/v1/namespaces/default/pods',
+            params={'labelSelector': 'app=mandelbrot-worker'},
+            headers={'Authorization': f'Bearer {token}'},
+            verify=_CA_FILE,
+            timeout=5,
+        )
+        resp.raise_for_status()
+        pods = []
+        for item in resp.json().get('items', []):
+            name       = item['metadata']['name']
+            phase      = item['status'].get('phase', 'Unknown')
+            conditions = item['status'].get('conditions', [])
+            ready      = any(
+                c['type'] == 'Ready' and c['status'] == 'True'
+                for c in conditions
+            )
+            pods.append({'name': name, 'phase': phase, 'ready': ready})
+        return jsonify(pods=pods)
+    except Exception as e:
+        return jsonify(pods=[], error=str(e))
 
 
 @app.route('/')
@@ -41,7 +72,7 @@ def render():
         fullheight = int(request.args.get('height',  600))
         width      = max(1, min(width,      _MAX_DIM))
         fullheight = max(1, min(fullheight, _MAX_DIM))
-        if zoom <= 0 or zoom > 1e15:
+        if zoom <= 0 or zoom > 1e300:
             raise ValueError
     except (TypeError, ValueError):
         abort(400)

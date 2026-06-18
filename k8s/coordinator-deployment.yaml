@@ -13,6 +13,7 @@ spec:
       labels:
         app: mandelbrot-coordinator
     spec:
+      serviceAccountName: mandelbrot-coordinator
       containers:
         - name: mandelbrot-coordinator
           image: mandelbrot:latest

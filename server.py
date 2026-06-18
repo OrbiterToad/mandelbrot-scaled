@@ -71,10 +71,10 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
     max_iter = _max_iter(zoom)
     scale    = 3.5 / (zoom * width)
 
-    xs = ((np.arange(width, dtype=np.float32) - width * 0.5) * scale + posx)
+    xs = ((np.arange(width, dtype=np.float64) - width * 0.5) * scale + posx)
     # Row (yoffset + i) of the full image maps to strip row i.
     # Full-image row r: y = posy + (fullheight/2 - r) * scale
-    local_rows = np.arange(height, dtype=np.float32) + yoffset
+    local_rows = np.arange(height, dtype=np.float64) + yoffset
     ys = posy + (fullheight * 0.5 - local_rows) * scale
 
     smooth = _mandelbrot_kernel(xs, ys, max_iter)
@@ -109,7 +109,7 @@ def render():
         fullheight = int(request.args.get('fullheight', 0))
         width  = max(1, min(width,  _MAX_DIM))
         height = max(1, min(height, _MAX_DIM))
-        if zoom <= 0 or zoom > 1e15:
+        if zoom <= 0 or zoom > 1e300:
             raise ValueError
     except (TypeError, ValueError):
         abort(400)

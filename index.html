@@ -19,11 +19,32 @@
       pointer-events: none;
       user-select: none;
     }
+    #pods {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      user-select: none;
+      text-align: right;
+      line-height: 1.7;
+    }
+    #pods .header {
+      color: rgba(0, 210, 170, 0.9);
+      margin-bottom: 4px;
+    }
+    #pods .pod { color: rgba(0, 210, 170, 0.55); }
+    #pods .ready  { color: rgba(0, 210, 170, 0.9); }
+    #pods .pending { color: rgba(255, 170, 0, 0.8); }
+    #pods .failed  { color: rgba(255, 80, 80, 0.8); }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="info">zoom 1.00×</div>
+  <div id="pods"></div>
   <script>
     const canvas = document.getElementById('c');
     const ctx    = canvas.getContext('2d');
@@ -226,6 +247,32 @@
       info.textContent = zoomLabel();
       scheduleRender();
     });
+
+    // ── Pod status ────────────────────────────────────────────────────────────
+    const podsEl = document.getElementById('pods');
+
+    async function pollStatus() {
+      try {
+        const resp = await fetch('/status');
+        if (!resp.ok) return;
+        const { pods } = await resp.json();
+        if (!pods || pods.length === 0) { podsEl.innerHTML = ''; return; }
+
+        const readyCount = pods.filter(p => p.ready).length;
+        let html = `<div class="header">KUBERNETES &nbsp; ${readyCount}/${pods.length} ready</div>`;
+        for (const p of pods) {
+          // Show only the pod-specific suffix (last segment after final dash pair).
+          const shortName = p.name.replace(/^mandelbrot-worker-/, '');
+          const cls  = p.ready ? 'ready' : (p.phase === 'Failed' ? 'failed' : 'pending');
+          const dot  = p.ready ? '●' : '○';
+          html += `<div class="pod ${cls}">${dot} ${shortName} &nbsp; ${p.phase}</div>`;
+        }
+        podsEl.innerHTML = html;
+      } catch (_) {}
+    }
+
+    setInterval(pollStatus, 3000);
+    pollStatus();
 
     // ── Init ──────────────────────────────────────────────────────────────────
     resize();
