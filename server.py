@@ -1,59 +1,82 @@
 import math
 import os
-from flask import Flask, request, abort, send_file
+import numba
 import numpy as np
+from flask import Flask, request, abort, send_file
 from PIL import Image
 import io
 
 app = Flask(__name__)
 
-BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
-_LN2      = np.log(2.0)
-_PI       = np.pi
-_MAX_DIM  = 1920
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_LN2     = math.log(2.0)
+_PI      = math.pi
+_MAX_DIM = 1920
+
+# ---------------------------------------------------------------------------
+# Numba kernel: escape-time + smooth iteration count, parallelised over rows.
+# cache=True writes the compiled binary to __pycache__ so subsequent cold
+# starts skip recompilation.
+# ---------------------------------------------------------------------------
+
+@numba.njit(parallel=True, fastmath=True, cache=True)
+def _mandelbrot_kernel(xs: np.ndarray, ys: np.ndarray, max_iter: int) -> np.ndarray:
+    height = ys.shape[0]
+    width  = xs.shape[0]
+    out    = np.empty((height, width), dtype=np.float32)
+
+    for row in numba.prange(height):   # parallel axis
+        cy = float(ys[row])
+        for col in range(width):
+            cx  = float(xs[col])
+            zr  = 0.0
+            zi  = 0.0
+            zr2 = 0.0
+            zi2 = 0.0
+            it  = max_iter
+
+            for i in range(max_iter):
+                zr2 = zr * zr
+                zi2 = zi * zi
+                if zr2 + zi2 > 4.0:
+                    it = i
+                    break
+                zi = 2.0 * zr * zi + cy
+                zr = zr2 - zi2 + cx
+
+            if it == max_iter:
+                out[row, col] = 0.0
+            else:
+                log_zn = math.log(zr2 + zi2) * 0.5
+                nu     = math.log(log_zn / _LN2) / _LN2
+                smooth = (it + 1.0 - nu) / max_iter
+                out[row, col] = max(0.0, min(1.0, smooth))
+
+    return out
+
+
+# Compile at import time so the first HTTP request is not penalised.
+_mandelbrot_kernel(np.zeros(2, np.float32), np.zeros(2, np.float32), 1)
 
 
 def _max_iter(zoom: float) -> int:
-    # More iterations at higher zoom so detail doesn't collapse.
-    # Caps at 500 to keep CPU time reasonable.
     return min(500, max(100, int(100 * (1 + math.log2(max(1.0, zoom))))))
 
 
 def render_mandelbrot(posx: float, posy: float, zoom: float,
                       width: int, height: int) -> bytes:
     max_iter = _max_iter(zoom)
+    scale    = 3.5 / (zoom * width)
 
-    # complex units per pixel
-    scale = 3.5 / (zoom * width)
-
-    # Row 0 = top of image = largest imaginary (standard math orientation).
     xs = ((np.arange(width,  dtype=np.float32) - width  * 0.5) * scale + posx)
     ys = (posy + (height * 0.5 - np.arange(height, dtype=np.float32)) * scale)
 
-    C     = (xs[np.newaxis, :] + 1j * ys[:, np.newaxis]).astype(np.complex64)
-    Z     = np.zeros_like(C)
-    M     = np.full(C.shape, max_iter, dtype=np.float32)
-    alive = np.ones(C.shape, dtype=bool)
+    smooth = _mandelbrot_kernel(xs, ys, max_iter)
 
-    for i in range(max_iter):
-        Z[alive]  = Z[alive] ** 2 + C[alive]
-        z2        = Z.real ** 2 + Z.imag ** 2
-        escaped   = alive & (z2 > 4.0)
-        M[escaped] = i + 1
-        alive[escaped] = False
-
-    in_set = alive
-    z2_end = Z.real ** 2 + Z.imag ** 2
-    log_zn = np.log(np.where(in_set, 5.0, z2_end)) * 0.5
-    nu     = np.log(log_zn / _LN2) / _LN2
-    smooth = np.where(in_set, 0.0,
-                      np.clip((M + 1.0 - nu) / max_iter, 0.0, 1.0))
-
-    t    = smooth.astype(np.float32)
+    t    = smooth
     v    = 1.0 - np.cos(_PI * t)
     band = 0.18 * np.sin(t * _PI * 6.0)
     br   = np.clip(v + band, 0.0, 1.0)
-
     gray = np.clip(br * 255, 0, 255).astype(np.uint8)
 
     img = Image.fromarray(gray, 'L')

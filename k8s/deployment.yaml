@@ -22,10 +22,10 @@ spec:
           resources:
             requests:
               memory: 128Mi
-              cpu: 250m
+              cpu: 8000m
             limits:
               memory: 512Mi   # NumPy arrays per render ~100 MB at 1920x1080
-              cpu: 500m
+              cpu: 16000m
           livenessProbe:
             httpGet:
               path: /
