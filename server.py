@@ -1,13 +1,16 @@
 import math
-from flask import Flask, request, abort
+import os
+from flask import Flask, request, abort, send_file
 import numpy as np
 from PIL import Image
 import io
 
 app = Flask(__name__)
 
-_LN2 = np.log(2.0)
-_PI  = np.pi
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+_LN2      = np.log(2.0)
+_PI       = np.pi
+_MAX_DIM  = 1920
 
 
 def _max_iter(zoom: float) -> int:
@@ -51,13 +54,9 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
     band = 0.18 * np.sin(t * _PI * 6.0)
     br   = np.clip(v + band, 0.0, 1.0)
 
-    rgb = np.stack([
-        np.clip(br * br * 35,  0, 255).astype(np.uint8),
-        np.clip(br * 195,      0, 255).astype(np.uint8),
-        np.clip(br * 255,      0, 255).astype(np.uint8),
-    ], axis=-1)
+    gray = np.clip(br * 255, 0, 255).astype(np.uint8)
 
-    img = Image.fromarray(rgb, 'RGB')
+    img = Image.fromarray(gray, 'L')
     buf = io.BytesIO()
     img.save(buf, format='PNG', compress_level=1)
     buf.seek(0)
@@ -66,8 +65,7 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
 
 @app.route('/')
 def index():
-    with open('index.html', 'rb') as f:
-        return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    return send_file(os.path.join(BASE_DIR, 'index.html'))
 
 
 @app.route('/render')
@@ -76,12 +74,11 @@ def render():
         posx   = float(request.args.get('posx',   -0.5))
         posy   = float(request.args.get('posy',    0.0))
         zoom   = float(request.args.get('zoom',    1.0))
-        width  = int(request.args.get('width',   500))
-        height = int(request.args.get('height',  500))
-        # Enforce fixed 500×500 cap regardless of what client sends.
-        width  = min(width,  500)
-        height = min(height, 500)
-        if zoom <= 0:
+        width  = int(request.args.get('width',   800))
+        height = int(request.args.get('height',  600))
+        width  = max(1, min(width,  _MAX_DIM))
+        height = max(1, min(height, _MAX_DIM))
+        if zoom <= 0 or zoom > 1e15:
             raise ValueError
     except (TypeError, ValueError):
         abort(400)

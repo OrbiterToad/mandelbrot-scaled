@@ -1,13 +1,13 @@
 # Mandelbrot
 
-A fullscreen Mandelbrot set explorer served via nginx, containerized for local Kubernetes (k3d).
+A fullscreen Mandelbrot set explorer served via Gunicorn/Flask (NumPy renderer), containerized for local Kubernetes (k3d).
 
 ## Prerequisites
 
 - Docker
 - [k3d](https://k3d.io) with a running cluster
 - `kubectl` configured to talk to that cluster
-- nginx ingress controller enabled on the cluster
+- Traefik ingress controller enabled on the cluster (default with k3d)
 
 If you don't have a cluster yet:
 
@@ -39,9 +39,10 @@ kubectl apply -f k8s/
 ```
 
 This creates:
-- `Deployment` — 2 replicas of the nginx container
+
+- `Deployment` — 2 replicas of the Gunicorn/Flask container
 - `Service` — ClusterIP on port 80
-- `Ingress` — routes `mandelbrot.local` to the service
+- `Ingress` — matches all HTTP traffic and forwards to the service (no host filter)
 
 Verify everything is running:
 
@@ -49,17 +50,15 @@ Verify everything is running:
 kubectl get pods,svc,ingress
 ```
 
-## 4. Add a hosts entry
+## 4. Open the app
 
-```bash
-echo "127.0.0.1 mandelbrot.local" | sudo tee -a /etc/hosts
-```
+Navigate to [http://localhost](http://localhost) in your browser.
 
-## 5. Open the app
+- Scroll to zoom in and out
+- Click and drag to pan
+- Double-click to zoom in 3× on a point
 
-Navigate to [http://mandelbrot.local](http://mandelbrot.local) in your browser.
-
-Scroll to zoom in and out. The current zoom level is shown in the bottom-left corner.
+The current zoom level is shown in the bottom-left corner.
 
 ## Teardown
 

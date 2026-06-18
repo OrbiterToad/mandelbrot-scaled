@@ -7,7 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
-    canvas { display: block; }
+    canvas { display: block; cursor: crosshair; }
     #info {
       position: fixed;
       bottom: 14px;
@@ -29,17 +29,22 @@
     const ctx    = canvas.getContext('2d');
     const info   = document.getElementById('info');
 
-    // ── View state (updated on every scroll) ─────────────────────────────────
+    // ── View state ────────────────────────────────────────────────────────────
     let viewX = -0.5, viewY = 0.0, zoomFactor = 1.0;
 
     // ── Render state (updated only when a new image arrives) ─────────────────
-    // The last fetched image and the view params it was rendered at.
     let renderX = -0.5, renderY = 0.0, renderZoom = 1.0;
+    let renderW = 0, renderH = 0;
     let renderedImg = null;
 
     // ── Fetch state ───────────────────────────────────────────────────────────
     let fetchPending  = false;
     let debounceTimer = null;
+
+    // ── Pan state ─────────────────────────────────────────────────────────────
+    let isPanning = false;
+    let panStartX = 0, panStartY = 0;
+    let panStartViewX = 0, panStartViewY = 0;
 
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -49,28 +54,32 @@
     }
 
     // Draw the stored image transformed to match the current view.
-    // Image was rendered at (renderX, renderY, renderZoom); canvas shows (viewX, viewY, zoomFactor).
+    // Image was rendered at (renderX, renderY, renderZoom, renderW×renderH).
+    // Canvas shows (viewX, viewY, zoomFactor).
+    // The server uses scale = 3.5 / (zoom * width) for both axes, so imgScale
+    // is the same in X and Y, derived from the render width.
     function redraw() {
       const W = canvas.width;
       const H = canvas.height;
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
-      if (!renderedImg) return;
+      if (!renderedImg || renderW === 0) return;
 
-      // complex units per canvas pixel for current view
+      // complex units per canvas pixel (current view)
       const canvasScale = 3.5 / (zoomFactor * W);
-      // complex units per render pixel (render is always 500 px wide)
-      const imgScale    = 3.5 / (renderZoom * 500);
+      // complex units per render pixel (same scale used for both axes by server)
+      const imgScale    = 3.5 / (renderZoom * renderW);
 
-      // Size of the render image projected onto the canvas (square image → square draw)
-      const drawSize = 500 * imgScale / canvasScale;  // = W * zoomFactor / renderZoom
+      // Render image projected onto the canvas in pixels.
+      const drawW = renderW * imgScale / canvasScale;
+      const drawH = renderH * imgScale / canvasScale;
 
-      // Canvas pixel where the top-left corner of the render image belongs.
-      // Image center corresponds to complex (renderX, renderY); positive imaginary is UP.
-      const destX = W / 2 + (renderX - viewX) / canvasScale - drawSize / 2;
-      const destY = H / 2 - (renderY - viewY) / canvasScale - drawSize / 2;
+      // Canvas pixel of the top-left corner of the render image.
+      // Image center is complex (renderX, renderY); positive imaginary is UP.
+      const destX = W / 2 + (renderX - viewX) / canvasScale - drawW / 2;
+      const destY = H / 2 - (renderY - viewY) / canvasScale - drawH / 2;
 
-      ctx.drawImage(renderedImg, destX, destY, drawSize, drawSize);
+      ctx.drawImage(renderedImg, destX, destY, drawW, drawH);
     }
 
     // ── Fetch logic ───────────────────────────────────────────────────────────
@@ -80,11 +89,12 @@
       fetchPending = true;
       info.textContent = zoomLabel() + ' …';
 
-      // Capture view state at request time so we know what the image represents.
+      // Snapshot view + canvas dimensions at request time.
       const fx = viewX, fy = viewY, fz = zoomFactor;
+      const fw = canvas.width, fh = canvas.height;
 
       try {
-        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=500&height=500`;
+        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=${fw}&height=${fh}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(resp.status);
 
@@ -94,10 +104,11 @@
         await new Promise((resolve, reject) => {
           const img  = new Image();
           img.onload = () => {
-            // Update render state — this is what the image represents.
             renderX    = fx;
             renderY    = fy;
             renderZoom = fz;
+            renderW    = fw;
+            renderH    = fh;
             renderedImg = img;
             URL.revokeObjectURL(objUrl);
             redraw();
@@ -111,13 +122,17 @@
       fetchPending = false;
       info.textContent = zoomLabel();
 
-      // If the view has changed enough since this fetch started, go again immediately
-      // (no extra debounce — we just finished waiting for a render).
       if (needsRender()) doFetch();
     }
 
     function needsRender() {
-      return zoomFactor > renderZoom * 1.5;
+      if (renderW === 0) return true;
+      if (zoomFactor > renderZoom * 1.25 || zoomFactor < renderZoom * 0.8) return true;
+      // Re-render if the view center has drifted more than half the canvas from the render center.
+      const canvasScale = 3.5 / (zoomFactor * canvas.width);
+      const dxPx = Math.abs(viewX - renderX) / canvasScale;
+      const dyPx = Math.abs(viewY - renderY) / canvasScale;
+      return dxPx > canvas.width * 0.5 || dyPx > canvas.height * 0.5;
     }
 
     function scheduleRender() {
@@ -132,8 +147,9 @@
       return 'zoom ' + (z < 10 ? z.toFixed(2) : z < 1000 ? z.toFixed(1) : z.toFixed(0)) + '×';
     }
 
-    window.addEventListener('resize', () => { resize(); redraw(); });
+    window.addEventListener('resize', () => { resize(); redraw(); scheduleRender(); });
 
+    // ── Scroll zoom ───────────────────────────────────────────────────────────
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const factor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
@@ -142,17 +158,13 @@
       // Flip DOM y so positive imaginary points up (matches server row-0 = top = max imag).
       const my = canvas.height - e.clientY;
 
-      // Complex coords under cursor before rescale.
       const canvasScale = 3.5 / (zoomFactor * canvas.width);
       const mcx = viewX + (mx - canvas.width  * 0.5) * canvasScale;
       const mcy = viewY + (my - canvas.height * 0.5) * canvasScale;
 
-      zoomFactor /= factor;   // zoom in → zoomFactor rises (factor < 1 on scroll-up)
-      // wait, scroll up = zoom in, deltaY < 0, factor = 1/1.15 < 1, so zoomFactor /= (1/1.15) = *1.15 ✓
+      zoomFactor /= factor;   // scroll up → deltaY < 0 → factor = 1/1.15 → /factor = *1.15 ✓
 
       const newCanvasScale = 3.5 / (zoomFactor * canvas.width);
-
-      // Keep cursor point fixed in complex space.
       viewX = mcx - (mx - canvas.width  * 0.5) * newCanvasScale;
       viewY = mcy - (my - canvas.height * 0.5) * newCanvasScale;
 
@@ -162,9 +174,62 @@
       if (needsRender()) scheduleRender();
     }, { passive: false });
 
+    // ── Pan (drag) ────────────────────────────────────────────────────────────
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      isPanning     = true;
+      panStartX     = e.clientX;
+      panStartY     = e.clientY;
+      panStartViewX = viewX;
+      panStartViewY = viewY;
+      canvas.style.cursor = 'grabbing';
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      const canvasScale = 3.5 / (zoomFactor * canvas.width);
+      // Drag right → image moves right → viewX (center) moves left → subtract dx.
+      // Drag down  → image moves down  → viewY (center) moves up   → add dy
+      //   (canvas y increases downward; complex imaginary increases upward).
+      viewX = panStartViewX - (e.clientX - panStartX) * canvasScale;
+      viewY = panStartViewY + (e.clientY - panStartY) * canvasScale;
+      redraw();
+    });
+
+    function endPan() {
+      if (!isPanning) return;
+      isPanning = false;
+      canvas.style.cursor = 'crosshair';
+      scheduleRender();
+    }
+
+    canvas.addEventListener('mouseup',    endPan);
+    canvas.addEventListener('mouseleave', endPan);
+
+    // ── Double-click zoom ─────────────────────────────────────────────────────
+    canvas.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      const mx = e.clientX;
+      const my = canvas.height - e.clientY;
+
+      const canvasScale = 3.5 / (zoomFactor * canvas.width);
+      const mcx = viewX + (mx - canvas.width  * 0.5) * canvasScale;
+      const mcy = viewY + (my - canvas.height * 0.5) * canvasScale;
+
+      zoomFactor *= 3.0;
+
+      const newCanvasScale = 3.5 / (zoomFactor * canvas.width);
+      viewX = mcx - (mx - canvas.width  * 0.5) * newCanvasScale;
+      viewY = mcy - (my - canvas.height * 0.5) * newCanvasScale;
+
+      redraw();
+      info.textContent = zoomLabel();
+      scheduleRender();
+    });
+
     // ── Init ──────────────────────────────────────────────────────────────────
     resize();
-    doFetch();   // immediate first render, no debounce
+    doFetch();
   </script>
 </body>
 </html>
