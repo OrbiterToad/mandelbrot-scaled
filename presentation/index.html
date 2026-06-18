@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MANDELBAUM: A KUBERNETES ODYSSEY</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=VT323&family=Permanent+Marker&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --neon: #00ffd5;
+    --pink: #ff00cc;
+    --yellow: #ffee00;
+    --red: #ff3030;
+  }
+
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ── Slide container ── */
+  .deck { width: 100%; height: 100%; position: relative; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s;
+    padding: 40px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .slide.active { opacity: 1; pointer-events: all; }
+
+  .slide .bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    filter: brightness(0.35);
+    z-index: 0;
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  /* ── Typography ── */
+  h1 {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: clamp(2rem, 6vw, 5rem);
+    line-height: 1.1;
+    text-shadow: 0 0 20px var(--neon), 0 0 60px var(--neon);
+    color: #fff;
+  }
+  h2 {
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: clamp(1.4rem, 4vw, 3rem);
+    color: var(--neon);
+    text-shadow: 0 0 15px var(--neon);
+    margin-bottom: 24px;
+  }
+  h3 {
+    font-family: 'VT323', monospace;
+    font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+    color: var(--yellow);
+    margin-bottom: 12px;
+  }
+  p, li {
+    font-family: 'VT323', monospace;
+    font-size: clamp(1.2rem, 2.5vw, 2rem);
+    color: #ddd;
+    line-height: 1.5;
+    max-width: 900px;
+  }
+  .big { font-size: clamp(2rem, 5vw, 4rem); color: #fff; font-family: 'Permanent Marker', cursive; }
+  .neon { color: var(--neon); text-shadow: 0 0 10px var(--neon); }
+  .pink { color: var(--pink); text-shadow: 0 0 10px var(--pink); }
+  .yellow { color: var(--yellow); text-shadow: 0 0 10px var(--yellow); }
+  .red { color: var(--red); text-shadow: 0 0 10px var(--red); }
+
+  ul { list-style: none; text-align: left; }
+  ul li::before { content: "▶ "; color: var(--neon); }
+
+  /* ── Animations ── */
+  @keyframes glitch {
+    0%,100% { transform: none; text-shadow: 0 0 20px var(--neon), 0 0 60px var(--neon); }
+    20% { transform: skew(-3deg) translateX(4px); text-shadow: -4px 0 var(--pink), 4px 0 var(--neon); }
+    40% { transform: skew(2deg) translateX(-4px); text-shadow: 4px 0 var(--yellow), -4px 0 var(--pink); }
+    60% { transform: none; }
+  }
+  @keyframes pulse-neon {
+    0%,100% { text-shadow: 0 0 10px var(--neon), 0 0 30px var(--neon); }
+    50% { text-shadow: 0 0 40px var(--neon), 0 0 80px var(--neon), 0 0 120px var(--neon); }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-18px); }
+  }
+  @keyframes scanline {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 100%; }
+  }
+  @keyframes rainbow-bg {
+    0%   { filter: hue-rotate(0deg) brightness(0.4); }
+    100% { filter: hue-rotate(360deg) brightness(0.4); }
+  }
+  @keyframes shake {
+    0%,100% { transform: rotate(0deg); }
+    25% { transform: rotate(-2deg) scale(1.02); }
+    75% { transform: rotate(2deg) scale(0.98); }
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes slide-up {
+    from { transform: translateY(60px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  .glitch { animation: glitch 3s infinite; }
+  .pulse  { animation: pulse-neon 2s ease-in-out infinite; }
+  .float  { animation: float 3s ease-in-out infinite; }
+  .spin   { display: inline-block; animation: spin 4s linear infinite; }
+  .shake  { animation: shake 0.4s infinite; }
+  .blink  { animation: blink 1s step-end infinite; }
+
+  .slide.active .anim-in { animation: slide-up 0.5s ease both; }
+  .slide.active .anim-in:nth-child(2) { animation-delay: 0.15s; }
+  .slide.active .anim-in:nth-child(3) { animation-delay: 0.30s; }
+  .slide.active .anim-in:nth-child(4) { animation-delay: 0.45s; }
+  .slide.active .anim-in:nth-child(5) { animation-delay: 0.60s; }
+
+  /* ── Scanline overlay ── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Progress bar ── */
+  #progress {
+    position: fixed;
+    bottom: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--neon), var(--pink));
+    transition: width 0.3s;
+    z-index: 1000;
+  }
+
+  /* ── Slide counter ── */
+  #counter {
+    position: fixed;
+    bottom: 12px; right: 16px;
+    font-family: 'VT323', monospace;
+    font-size: 1rem;
+    color: rgba(0,210,170,0.4);
+    z-index: 1000;
+  }
+
+  /* ── Nav hint ── */
+  #hint {
+    position: fixed;
+    bottom: 12px; left: 16px;
+    font-family: 'VT323', monospace;
+    font-size: 0.9rem;
+    color: rgba(255,255,255,0.25);
+    z-index: 1000;
+  }
+
+  /* ── Code block ── */
+  .code {
+    background: rgba(0,0,0,0.7);
+    border: 1px solid var(--neon);
+    border-radius: 6px;
+    padding: 16px 24px;
+    font-family: 'VT323', monospace;
+    font-size: clamp(1rem, 2vw, 1.6rem);
+    color: var(--neon);
+    text-align: left;
+    white-space: pre;
+    max-width: 700px;
+    box-shadow: 0 0 20px rgba(0,255,213,0.2);
+  }
+
+  /* ── Pill tags ── */
+  .tag {
+    display: inline-block;
+    padding: 4px 14px;
+    border: 1px solid;
+    border-radius: 99px;
+    font-family: 'VT323', monospace;
+    font-size: 1.3rem;
+    margin: 4px;
+  }
+  .tag-neon  { border-color: var(--neon);   color: var(--neon); }
+  .tag-pink  { border-color: var(--pink);   color: var(--pink); }
+  .tag-yellow{ border-color: var(--yellow); color: var(--yellow); }
+
+  /* ── Arch diagram ── */
+  .arch {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-family: 'VT323', monospace;
+    font-size: 1.4rem;
+  }
+  .box {
+    border: 2px solid;
+    border-radius: 8px;
+    padding: 10px 18px;
+    text-align: center;
+    min-width: 120px;
+  }
+  .box-coord { border-color: var(--yellow); color: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
+  .box-worker{ border-color: var(--neon);   color: var(--neon);   box-shadow: 0 0 10px var(--neon); }
+  .box-browser{ border-color: var(--pink);  color: var(--pink);   box-shadow: 0 0 10px var(--pink); }
+  .arrow { font-size: 2rem; color: rgba(255,255,255,0.5); }
+
+  /* ── Rainbow animated bg for drug slide ── */
+  .drug-bg { animation: rainbow-bg 3s linear infinite; }
+
+  /* ── Meme image ── */
+  .meme {
+    border: 3px solid var(--pink);
+    box-shadow: 0 0 30px var(--pink);
+    max-height: 45vh;
+    max-width: 80vw;
+    object-fit: contain;
+    border-radius: 4px;
+  }
+
+  /* ── Two column ── */
+  .cols { display: flex; gap: 32px; align-items: flex-start; justify-content: center; flex-wrap: wrap; }
+  .col  { flex: 1; min-width: 260px; max-width: 480px; }
+
+  /* ── Strip viz ── */
+  .strip-demo {
+    width: 220px;
+    height: 300px;
+    border: 2px solid rgba(255,255,255,0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 4px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.8);
+  }
+  .strip-demo .s {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'VT323', monospace;
+    font-size: 1.1rem;
+    font-weight: bold;
+    border-bottom: 2px dashed rgba(255,255,255,0.5);
+  }
+  .strip-demo .s:last-child { border-bottom: none; }
+  .s1 { background: rgba(255,  0,204,0.25); color: var(--pink); }
+  .s2 { background: rgba(  0,255,213,0.25); color: var(--neon); }
+  .s3 { background: rgba(255,238,  0,0.25); color: var(--yellow); }
+
+  /* ── Emoji big ── */
+  .emoji { font-size: clamp(3rem, 8vw, 7rem); line-height: 1; }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 1 - TITLE -->
+  <div class="slide active" id="s0">
+    <div class="bg" style="background-image:url('images/render.png')"></div>
+    <div style="margin-bottom:8px" class="anim-in">
+      <span class="tag tag-pink">CLOUD NATIVE</span>
+      <span class="tag tag-neon">FRACTAL</span>
+      <span class="tag tag-yellow">MADNESS</span>
+    </div>
+    <h1 class="glitch anim-in" style="margin-bottom:16px">MANDELBAUM<br>☁️ ON KUBERNETES ☁️</h1>
+    <p class="anim-in" style="color:rgba(255,255,255,0.6); font-size:1.2rem">
+      A completely unnecessary but extremely cool<br>
+      deep-dive into math, containers & chaos
+    </p>
+    <p class="anim-in pulse" style="margin-top:32px; color:var(--neon); font-size:1.5rem">
+      press → to not fall asleep
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 2 - WHAT IS MANDELBROT -->
+  <div class="slide" id="s1">
+    <div class="bg" style="background-image:url('images/render (1).png')"></div>
+    <h2 class="anim-in">SO WHAT IS THE MANDELBAUM?</h2>
+    <div class="float anim-in" style="font-size:clamp(3rem,10vw,8rem); margin-bottom:8px">🌳</div>
+    <p class="anim-in" style="max-width:800px">
+      In 1980, a man named <span class="neon">Benoît Mandelbrot</span> looked at the equation
+      <strong style="color:var(--yellow)">z → z² + c</strong> and thought:<br><br>
+      <span class="big pink">"what if I just... loop this forever"</span>
+    </p>
+    <p class="anim-in" style="margin-top:20px; color: rgba(255,255,255,0.5)">
+      (he was a genius. we are just vibing.)
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 3 - THE MATHS -->
+  <div class="slide" id="s2">
+    <div class="bg" style="background-image:url('images/render (2).png')"></div>
+    <h2 class="anim-in">THE TERRIFYING FORMULA</h2>
+    <div class="code anim-in">z<sub>n+1</sub> = z<sub>n</sub>² + c
+
+where:
+  z = complex number (scary)
+  c = also complex number (also scary)
+  n = how many times you repeat it
+  ∞ = when you give up</div>
+    <p class="anim-in" style="margin-top:20px; max-width:700px">
+      If <span class="neon">|z| stays ≤ 2</span> forever → point is <span class="neon">IN the set</span> (black)<br>
+      If it <span class="red">escapes to ∞</span> → it's <span class="red">OUT</span> → colour it based on how fast it ran away<br><br>
+      <span class="yellow">That's literally it. The whole thing. I promise.</span>
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 4 - THE RESULT -->
+  <div class="slide" id="s3">
+    <div class="bg" style="background-image:url('images/render (3).png')"></div>
+    <h2 class="anim-in">AND IT LOOKS LIKE THIS</h2>
+    <img src="images/render (4).png" class="meme anim-in float" alt="mandelbrot">
+    <p class="anim-in" style="margin-top:20px">
+      Infinite complexity. Infinite detail. Infinite zoom.<br>
+      <span class="pink">Rendered by 3 kubernetes pods living their best life.</span>
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 5 - SELF SIMILARITY -->
+  <div class="slide" id="s4">
+    <div class="bg" style="background-image:url('images/render (6).png')"></div>
+    <h2 class="anim-in">IT GOES FOREVER</h2>
+    <div class="cols anim-in">
+      <div class="col" style="text-align:center">
+        <img src="images/render (7).png" style="max-width:100%; border:2px solid var(--neon); box-shadow:0 0 20px var(--neon)">
+        <p style="margin-top:8px; color:var(--neon)">zoom level: kinda far</p>
+      </div>
+      <div class="col" style="text-align:center">
+        <img src="images/render (8).png" style="max-width:100%; border:2px solid var(--pink); box-shadow:0 0 20px var(--pink)">
+        <p style="margin-top:8px; color:var(--pink)">zoom level: very zoomed</p>
+      </div>
+    </div>
+    <p class="anim-in" style="margin-top:16px">
+      <span class="yellow">Self-similar at every scale.</span> Zoom in forever and it keeps going.<br>
+      Our zoom cap: <span class="neon">1×10³⁰⁰</span> — because why not
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 6 - WHAT IS K8S -->
+  <div class="slide" id="s5">
+    <div class="bg" style="background-image:url('images/render (9).png')"></div>
+    <h2 class="anim-in">NOW WHAT IS KUBERNETES?</h2>
+    <div class="emoji anim-in">🤔</div>
+    <p class="anim-in" style="margin-top:16px; max-width:800px">
+      Imagine you have a bunch of computers.<br>
+      Now imagine you need something to babysit all those computers.<br>
+      Now imagine the babysitter is also made of computers.<br><br>
+      <span class="neon">That's Kubernetes.</span>
+    </p>
+    <p class="anim-in" style="margin-top:16px; color:rgba(255,255,255,0.5)">
+      Greek for "helmsman". The logo is a steering wheel.<br>
+      Everyone calls it <span class="yellow">k8s</span> because typing is hard.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 7 - PODS -->
+  <div class="slide" id="s6">
+    <div class="bg" style="background-image:url('images/render (11).png')"></div>
+    <h2 class="anim-in">PODS: THE TINY WORKERS 🫛</h2>
+    <div class="cols">
+      <div class="col anim-in">
+        <div class="box box-worker" style="font-size:1.5rem; padding:20px; margin-bottom:16px">
+          <div style="font-size:2.5rem">🫛</div>
+          <div>mandelbrot-worker-abc</div>
+          <div style="font-size:1rem; color:rgba(255,255,255,0.5); margin-top:8px">Status: Running<br>CPU: SWEATING</div>
+        </div>
+      </div>
+      <div class="col anim-in">
+        <ul style="font-size:1.4rem">
+          <li>A Pod is one running container</li>
+          <li>K8s can have 1 or 1000 of them</li>
+          <li>If it dies, k8s restarts it</li>
+          <li>It has no feelings about this</li>
+          <li>We have <span class="neon">3 worker pods</span></li>
+          <li>+ <span class="yellow">1 coordinator pod</span></li>
+          <li>= <span class="pink">4 pods living the dream</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 8 - ARCHITECTURE -->
+  <div class="slide" id="s7">
+    <div class="bg" style="background-image:url('images/render (12).png')"></div>
+    <h2 class="anim-in">OUR ARCHITECTURE (it's genius, trust me)</h2>
+    <div class="arch anim-in" style="margin:20px 0">
+      <div class="box box-browser">🌐<br>Your<br>Browser</div>
+      <div class="arrow">→</div>
+      <div class="box box-coord">👑<br>Coordinator<br>Pod</div>
+      <div class="arrow">→→→</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="box box-worker">🫛 Worker 1</div>
+        <div class="box box-worker">🫛 Worker 2</div>
+        <div class="box box-worker">🫛 Worker 3</div>
+      </div>
+    </div>
+    <p class="anim-in">
+      Browser asks for image → Coordinator splits into <span class="yellow">3 strips</span><br>
+      → 3 workers render in <span class="neon">parallel</span> → stitched back together → 🖼️<br>
+      <span class="pink">3x faster*</span>
+      <span style="font-size:0.9rem; color:rgba(255,255,255,0.3)">(*approximately, if the pods feel like it)</span>
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 9 - STRIPS -->
+  <div class="slide" id="s8">
+    <div class="bg" style="background-image:url('images/render (13).png')"></div>
+    <h2 class="anim-in">STRIP RENDERING: A MASTERCLASS</h2>
+    <div class="cols">
+      <div class="col anim-in" style="display:flex;justify-content:center">
+        <div class="strip-demo float">
+          <div class="s s1">🫛 WORKER 1<br><small>rows 0–299</small></div>
+          <div class="s s2">🫛 WORKER 2<br><small>rows 300–599</small></div>
+          <div class="s s3">🫛 WORKER 3<br><small>rows 600–899</small></div>
+        </div>
+      </div>
+      <div class="col anim-in">
+        <ul style="font-size:1.3rem; margin-top:16px">
+          <li>Each pod gets its own horizontal slice</li>
+          <li>They all compute at the <span class="neon">same time</span></li>
+          <li>Coordinator waits for all 3</li>
+          <li>Stitches them with PIL paste</li>
+          <li>Sends one big PNG to you</li>
+          <li style="margin-top:12px">Enable <span class="yellow">boundaries view</span></li>
+          <li>...to see the seams live ✨</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 10 - NUMBA -->
+  <div class="slide" id="s9">
+    <div class="bg" style="background-image:url('images/render (14).png')"></div>
+    <h2 class="anim-in">NUMBA JIT: GO FAST OR GO HOME 🚀</h2>
+    <div class="code anim-in">@numba.njit(parallel=True, fastmath=True, cache=True)
+def _mandelbrot_kernel(xs, ys, max_iter):
+    for row in numba.prange(height):  # ← parallel!!!
+        for col in range(width):
+            # math goes brrrr</div>
+    <div class="cols anim-in" style="margin-top:20px">
+      <div class="col" style="text-align:center">
+        <div class="tag tag-pink" style="font-size:1.4rem; padding:10px 20px">Without Numba</div>
+        <p class="red" style="font-size:2rem; margin-top:8px">😴 slow<br>pure Python</p>
+      </div>
+      <div class="col" style="text-align:center">
+        <div class="tag tag-neon" style="font-size:1.4rem; padding:10px 20px">With Numba JIT</div>
+        <p class="neon" style="font-size:2rem; margin-top:8px">⚡ compiled<br>C-speed loops</p>
+      </div>
+    </div>
+    <p class="anim-in" style="margin-top:12px; color:rgba(255,255,255,0.5)">
+      First request is slow (compiling). Then it's FAST. Trust the process.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 11 - DRUG MODE -->
+  <div class="slide" id="s10">
+    <div class="bg drug-bg" style="background-image:url('images/render (10).png')"></div>
+    <h2 class="anim-in shake" style="color:var(--pink)">DRUG MODE 💊🌈</h2>
+    <img src="images/render (5).png" class="meme anim-in" style="border-color:var(--yellow); box-shadow:0 0 40px var(--yellow); animation: float 2s ease-in-out infinite">
+    <p class="anim-in" style="margin-top:16px">
+      <span class="yellow">hue-rotate(Xdeg)</span> + <span class="pink">saturate(2.5)</span> + <span class="neon">brightness(1.2)</span><br>
+      running at <span class="red">60fps</span> on the GPU.<br><br>
+      <span class="big">Zero extra server cost.</span><br>
+      <span style="color:rgba(255,255,255,0.4); font-size:1rem">Please do not operate heavy machinery while using drug mode.</span>
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 12 - RBAC -->
+  <div class="slide" id="s11">
+    <div class="bg" style="background-image:url('images/render (2).png')"></div>
+    <h2 class="anim-in">K8S RBAC: BECAUSE SECURITY 🔐</h2>
+    <p class="anim-in" style="max-width:800px; margin-bottom:20px">
+      The coordinator needs to <span class="neon">list pods</span> to show you the status panel.<br>
+      Kubernetes said: <span class="red">"NOT WITHOUT PAPERWORK."</span>
+    </p>
+    <div class="code anim-in">ServiceAccount: mandelbrot-coordinator
+Role: can GET and LIST pods
+RoleBinding: links the two above
+↓
+coordinator can now call the k8s API
+and feel very important about it</div>
+    <p class="anim-in" style="margin-top:20px; color:rgba(255,255,255,0.5)">
+      Without this: 403 Forbidden.<br>
+      With this: <span class="neon">◆ coordinator pod showing up in the UI like a boss.</span>
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 13 - DEMO TIME -->
+  <div class="slide" id="s12">
+    <div class="bg" style="background-image:url('images/render (3).png')"></div>
+    <div class="float anim-in" style="font-size:clamp(4rem,12vw,10rem)">🎮</div>
+    <h1 class="glitch anim-in" style="font-size:clamp(2rem,7vw,5rem)">DEMO TIME</h1>
+    <p class="anim-in" style="margin-top:20px; font-size:1.8rem">
+      <span class="neon">scroll</span> to zoom &nbsp;|&nbsp;
+      <span class="yellow">drag</span> to pan &nbsp;|&nbsp;
+      <span class="pink">double-click</span> to zoom 3×<br><br>
+      try: <span class="tag tag-neon">color</span>
+      <span class="tag tag-yellow">drug mode</span>
+      <span class="tag tag-pink">boundaries</span>
+    </p>
+    <p class="anim-in blink" style="margin-top:24px; color:var(--yellow); font-size:1.5rem">
+      ← zoom in until your computer cries →
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ SLIDE 14 - FIN -->
+  <div class="slide" id="s13">
+    <div class="bg drug-bg" style="background-image:url('images/render (10).png')"></div>
+    <h1 class="glitch anim-in" style="margin-bottom:16px">THANK YOU 🙏</h1>
+    <div class="cols anim-in" style="margin:16px 0; gap:40px">
+      <div class="col" style="text-align:center">
+        <div class="emoji">🌳</div>
+        <p class="neon" style="margin-top:8px">Mandelbrot:<br>infinite beauty<br>from simple math</p>
+      </div>
+      <div class="col" style="text-align:center">
+        <div class="emoji">☸️</div>
+        <p class="yellow" style="margin-top:8px">Kubernetes:<br>infinite complexity<br>from simple YAML</p>
+      </div>
+      <div class="col" style="text-align:center">
+        <div class="emoji">💊</div>
+        <p class="pink" style="margin-top:8px">Drug mode:<br>infinite colours<br>from one CSS filter</p>
+      </div>
+    </div>
+    <p class="anim-in pulse" style="margin-top:20px; font-size:1.6rem; color:var(--neon)">
+      Questions? Concerns? Want to zoom in more?
+    </p>
+    <p class="anim-in" style="color:rgba(255,255,255,0.3); font-size:1rem; margin-top:12px">
+      built with Flask · NumPy · Numba · Pillow · k3d · love · chaos
+    </p>
+  </div>
+
+</div><!-- /deck -->
+
+<div id="progress"></div>
+<div id="counter">1 / 14</div>
+<div id="hint">← → arrow keys &nbsp;|&nbsp; click to advance</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total  = slides.length;
+  let cur = 0;
+
+  function go(n) {
+    slides[cur].classList.remove('active');
+    cur = (n + total) % total;
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent = `${cur + 1} / ${total}`;
+    document.getElementById('progress').style.width = `${((cur + 1) / total) * 100}%`;
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown'  || e.key === ' ' || e.key === 'PageDown') go(cur + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp'    || e.key === 'PageUp')  go(cur - 1);
+    if (e.key === 'Home') go(0);
+    if (e.key === 'End')  go(total - 1);
+  });
+
+  document.getElementById('deck').addEventListener('click', () => go(cur + 1));
+
+  // init progress bar
+  document.getElementById('progress').style.width = `${(1 / total) * 100}%`;
+</script>
+</body>
+</html>
