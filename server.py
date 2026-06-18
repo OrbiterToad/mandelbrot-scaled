@@ -65,7 +65,8 @@ def _max_iter(zoom: float) -> int:
 
 def render_mandelbrot(posx: float, posy: float, zoom: float,
                       width: int, height: int,
-                      yoffset: int = 0, fullheight: int = 0) -> bytes:
+                      yoffset: int = 0, fullheight: int = 0,
+                      color: bool = False) -> bytes:
     if fullheight <= 0:
         fullheight = height
     max_iter = _max_iter(zoom)
@@ -83,9 +84,21 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
     v    = 1.0 - np.cos(_PI * t)
     band = 0.18 * np.sin(t * _PI * 6.0)
     br   = np.clip(v + band, 0.0, 1.0)
-    gray = np.clip(br * 255, 0, 255).astype(np.uint8)
-
-    img = Image.fromarray(gray, 'L')
+    if color:
+        # Cycling electric palette: hue rotates with iteration depth, br controls brightness.
+        # Interior points have br==0 so they stay black.
+        cycle = t * 28.0
+        r_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.00))) * br, 0.0, 1.0)
+        g_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.33))) * br, 0.0, 1.0)
+        b_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.67))) * br, 0.0, 1.0)
+        rgb = np.stack([
+            (r_f * 255).astype(np.uint8),
+            (g_f * 255).astype(np.uint8),
+            (b_f * 255).astype(np.uint8),
+        ], axis=-1)
+        img = Image.fromarray(rgb, 'RGB')
+    else:
+        img = Image.fromarray(np.clip(br * 255, 0, 255).astype(np.uint8), 'L')
     buf = io.BytesIO()
     img.save(buf, format='PNG', compress_level=1)
     buf.seek(0)
@@ -107,6 +120,7 @@ def render():
         height = int(request.args.get('height',  600))
         yoffset    = int(request.args.get('yoffset',    0))
         fullheight = int(request.args.get('fullheight', 0))
+        color      = request.args.get('color', '0') == '1'
         width  = max(1, min(width,  _MAX_DIM))
         height = max(1, min(height, _MAX_DIM))
         if zoom <= 0 or zoom > 1e300:
@@ -114,10 +128,11 @@ def render():
     except (TypeError, ValueError):
         abort(400)
 
-    png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight)
+    png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight, color)
     return png, 200, {
         'Content-Type':  'image/png',
         'Cache-Control': 'no-store',
+        'X-Pod-Name':    os.environ.get('POD_NAME', 'unknown'),
     }
 
 

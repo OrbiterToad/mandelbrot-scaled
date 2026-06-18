@@ -21,6 +21,11 @@ spec:
                     "--bind", "0.0.0.0:80",
                     "--workers", "2",
                     "--timeout", "120"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           ports:
             - containerPort: 80
           resources:
