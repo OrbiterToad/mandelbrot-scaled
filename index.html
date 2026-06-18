@@ -69,6 +69,7 @@
   <div id="pods"></div>
   <div id="controls">
     <button id="toggle-color"      class="ctrl-btn">color</button>
+    <button id="toggle-drug"       class="ctrl-btn">drug mode</button>
     <button id="toggle-boundaries" class="ctrl-btn">boundaries</button>
   </div>
   <script>
@@ -89,6 +90,9 @@
     let showBoundaries = false;
     let colorMode      = false;
     let renderColor    = false;  // color mode of the currently displayed image
+    let drugMode       = false;
+    let drugHue        = 0;
+    let drugRafId      = null;
 
     // ── Fetch state ───────────────────────────────────────────────────────────
     let fetchPending  = false;
@@ -132,7 +136,9 @@
       const destX = W / 2 + (renderX - viewX) / canvasScale - drawW / 2;
       const destY = H / 2 - (renderY - viewY) / canvasScale - drawH / 2;
 
+      ctx.filter = drugMode ? `hue-rotate(${drugHue}deg) saturate(2.5) brightness(1.2)` : 'none';
       ctx.drawImage(renderedImg, destX, destY, drawW, drawH);
+      ctx.filter = 'none';
 
       if (showBoundaries && renderStrips.length > 0) {
         ctx.save();
@@ -333,6 +339,24 @@
       colorMode = !colorMode;
       e.currentTarget.classList.toggle('active', colorMode);
       doFetch();
+    });
+
+    function drugTick() {
+      drugHue = (drugHue + 1.4) % 360;
+      redraw();
+      drugRafId = requestAnimationFrame(drugTick);
+    }
+
+    document.getElementById('toggle-drug').addEventListener('click', (e) => {
+      drugMode = !drugMode;
+      e.currentTarget.classList.toggle('active', drugMode);
+      if (drugMode) {
+        drugRafId = requestAnimationFrame(drugTick);
+      } else {
+        cancelAnimationFrame(drugRafId);
+        drugRafId = null;
+        redraw();
+      }
     });
 
     // ── Pod status ────────────────────────────────────────────────────────────
