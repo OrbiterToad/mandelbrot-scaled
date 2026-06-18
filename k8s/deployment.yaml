@@ -4,7 +4,7 @@ metadata:
   name: mandelbrot-worker
   namespace: default
 spec:
-  replicas: 4
+  replicas: 3
   selector:
     matchLabels:
       app: mandelbrot-worker
@@ -17,6 +17,19 @@ spec:
         - name: mandelbrot-worker
           image: mandelbrot:latest
           imagePullPolicy: Never
+          # gthread: single process + thread pool so the active-render counter
+          # is shared across all concurrent requests in the same pod.
+          command: ["gunicorn", "server:app",
+                    "--bind", "0.0.0.0:80",
+                    "--workers", "1",
+                    "--worker-class", "gthread",
+                    "--threads", "4",
+                    "--timeout", "120"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           ports:
             - containerPort: 80
           resources:
@@ -30,11 +43,11 @@ spec:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 5
+            initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /
               port: 80
-            initialDelaySeconds: 3
+            initialDelaySeconds: 30
             periodSeconds: 5

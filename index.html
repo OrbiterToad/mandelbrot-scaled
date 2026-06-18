@@ -261,11 +261,18 @@
         const readyCount = pods.filter(p => p.ready).length;
         let html = `<div class="header">KUBERNETES &nbsp; ${readyCount}/${pods.length} ready</div>`;
         for (const p of pods) {
-          // Show only the pod-specific suffix (last segment after final dash pair).
           const shortName = p.name.replace(/^mandelbrot-worker-/, '');
-          const cls  = p.ready ? 'ready' : (p.phase === 'Failed' ? 'failed' : 'pending');
-          const dot  = p.ready ? '●' : '○';
-          html += `<div class="pod ${cls}">${dot} ${shortName} &nbsp; ${p.phase}</div>`;
+          const cls = p.ready ? 'ready' : (p.phase === 'Failed' ? 'failed' : 'pending');
+          const dot = p.ready ? '●' : '○';
+          let activity = '';
+          if (p.active === null || p.active === undefined) {
+            activity = '<span style="opacity:0.4">  —</span>';
+          } else if (p.active > 0) {
+            activity = `  <span style="color:rgba(255,210,0,0.9)">rendering (${p.active})</span>`;
+          } else {
+            activity = '  <span style="opacity:0.35">idle</span>';
+          }
+          html += `<div class="pod ${cls}">${dot} ${shortName}${activity}</div>`;
         }
         podsEl.innerHTML = html;
       } catch (_) {}
