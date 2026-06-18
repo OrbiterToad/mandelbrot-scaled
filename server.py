@@ -85,12 +85,14 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
     band = 0.18 * np.sin(t * _PI * 6.0)
     br   = np.clip(v + band, 0.0, 1.0)
     if color:
-        # Cycling electric palette: hue rotates with iteration depth, br controls brightness.
+        # Cycling electric palette: hue rotates with iteration depth.
+        # br^0.4 gamma-lifts midtones so bands are vivid not muddy.
         # Interior points have br==0 so they stay black.
-        cycle = t * 28.0
-        r_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.00))) * br, 0.0, 1.0)
-        g_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.33))) * br, 0.0, 1.0)
-        b_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.67))) * br, 0.0, 1.0)
+        cycle = t * 36.0
+        br_g  = np.power(br, 0.4)
+        r_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.00))) * br_g, 0.0, 1.0)
+        g_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.38))) * br_g, 0.0, 1.0)
+        b_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.72))) * br_g, 0.0, 1.0)
         rgb = np.stack([
             (r_f * 255).astype(np.uint8),
             (g_f * 255).astype(np.uint8),
