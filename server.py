@@ -66,7 +66,8 @@ def _max_iter(zoom: float) -> int:
 def render_mandelbrot(posx: float, posy: float, zoom: float,
                       width: int, height: int,
                       yoffset: int = 0, fullheight: int = 0,
-                      color: bool = False) -> bytes:
+                      color: bool = False,
+                      palette: str = 'gentle') -> bytes:
     if fullheight <= 0:
         fullheight = height
     max_iter = _max_iter(zoom)
@@ -85,13 +86,20 @@ def render_mandelbrot(posx: float, posy: float, zoom: float,
     band = 0.18 * np.sin(t * _PI * 6.0)
     br   = np.clip(v + band, 0.0, 1.0)
     if color:
-        # Gentle cosine palette: only 3 hue rotations across the full escape range,
-        # low amplitude (0.35) so colours stay pastel and never slam to full
-        # saturation. Interior points have t==0 / br==0 and stay black.
-        cycle = t * 3.0
-        r_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.00))) * br, 0.0, 1.0)
-        g_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.33))) * br, 0.0, 1.0)
-        b_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.67))) * br, 0.0, 1.0)
+        if palette == 'electric':
+            # Cycling electric palette: high-frequency hue rotation with gamma-lifted
+            # brightness for vivid bands.
+            cycle = t * 36.0
+            br_g  = np.power(br, 0.4)
+            r_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.00))) * br_g, 0.0, 1.0)
+            g_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.38))) * br_g, 0.0, 1.0)
+            b_f = np.clip((0.5 + 0.5 * np.cos(2 * _PI * (cycle + 0.72))) * br_g, 0.0, 1.0)
+        else:
+            # Gentle cosine palette: slow hue rotation and low contrast.
+            cycle = t * 3.0
+            r_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.00))) * br, 0.0, 1.0)
+            g_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.33))) * br, 0.0, 1.0)
+            b_f = np.clip((0.5 + 0.35 * np.cos(2 * _PI * (cycle + 0.67))) * br, 0.0, 1.0)
         rgb = np.stack([
             (r_f * 255).astype(np.uint8),
             (g_f * 255).astype(np.uint8),
@@ -122,6 +130,9 @@ def render():
         yoffset    = int(request.args.get('yoffset',    0))
         fullheight = int(request.args.get('fullheight', 0))
         color      = request.args.get('color', '0') == '1'
+        palette    = request.args.get('palette', 'gentle').lower()
+        if palette not in ('gentle', 'electric'):
+            palette = 'gentle'
         width  = max(1, min(width,  _MAX_DIM))
         height = max(1, min(height, _MAX_DIM))
         if zoom <= 0 or zoom > 1e300:
@@ -129,7 +140,10 @@ def render():
     except (TypeError, ValueError):
         abort(400)
 
-    png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight, color)
+    png = render_mandelbrot(
+        posx, posy, zoom, width, height,
+        yoffset, fullheight, color, palette,
+    )
     return png, 200, {
         'Content-Type':  'image/png',
         'Cache-Control': 'no-store',

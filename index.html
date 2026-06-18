@@ -61,6 +61,11 @@
       color: rgba(0, 210, 170, 0.9);
       border-color: rgba(0, 210, 170, 0.6);
     }
+    .ctrl-btn:disabled {
+      color: rgba(0, 210, 170, 0.28);
+      border-color: rgba(0, 210, 170, 0.15);
+      cursor: default;
+    }
   </style>
 </head>
 <body>
@@ -69,6 +74,7 @@
   <div id="pods"></div>
   <div id="controls">
     <button id="toggle-color"      class="ctrl-btn">color</button>
+    <button id="toggle-palette"    class="ctrl-btn" disabled>palette: gentle</button>
     <button id="toggle-drug"       class="ctrl-btn">drug mode</button>
     <button id="toggle-boundaries" class="ctrl-btn">boundaries</button>
   </div>
@@ -90,6 +96,8 @@
     let showBoundaries = false;
     let colorMode      = false;
     let renderColor    = false;  // color mode of the currently displayed image
+    let colorPalette   = 'gentle';
+    let renderPalette  = 'gentle';
     let drugMode       = false;
     let drugHue        = 0;
     let drugRafId      = null;
@@ -184,9 +192,10 @@
       const fx = viewX, fy = viewY, fz = zoomFactor;
       const fw = canvas.width, fh = canvas.height;
       const fc = colorMode;
+      const fp = colorPalette;
 
       try {
-        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=${fw}&height=${fh}&color=${fc ? 1 : 0}`;
+        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=${fw}&height=${fh}&color=${fc ? 1 : 0}&palette=${encodeURIComponent(fp)}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(resp.status);
 
@@ -204,6 +213,7 @@
             renderH    = fh;
             renderedImg = img;
             renderColor  = fc;
+            renderPalette = fp;
             renderStrips = stripsHeader
               ? stripsHeader.split(';').map(s => {
                   const [yoffset, height, pod] = s.split(',');
@@ -228,6 +238,7 @@
     function needsRender() {
       if (renderW === 0) return true;
       if (colorMode !== renderColor) return true;
+      if (colorMode && colorPalette !== renderPalette) return true;
       if (zoomFactor > renderZoom * 1.25 || zoomFactor < renderZoom * 0.8) return true;
       // Re-render if the view center has drifted more than half the canvas from the render center.
       const canvasScale = 3.5 / (zoomFactor * canvas.width);
@@ -338,6 +349,22 @@
     document.getElementById('toggle-color').addEventListener('click', (e) => {
       colorMode = !colorMode;
       e.currentTarget.classList.toggle('active', colorMode);
+      updatePaletteButton();
+      doFetch();
+    });
+
+    const paletteBtn = document.getElementById('toggle-palette');
+
+    function updatePaletteButton() {
+      paletteBtn.disabled = !colorMode;
+      paletteBtn.textContent = `palette: ${colorPalette}`;
+      paletteBtn.classList.toggle('active', colorMode && colorPalette === 'electric');
+    }
+
+    paletteBtn.addEventListener('click', () => {
+      if (!colorMode) return;
+      colorPalette = (colorPalette === 'gentle') ? 'electric' : 'gentle';
+      updatePaletteButton();
       doFetch();
     });
 
@@ -387,6 +414,7 @@
     pollStatus();
 
     // ── Init ──────────────────────────────────────────────────────────────────
+    updatePaletteButton();
     resize();
     doFetch();
   </script>
