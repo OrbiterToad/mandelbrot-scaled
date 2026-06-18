@@ -3,3 +3,4 @@ numpy>=1.26
 pillow>=10.0
 gunicorn>=21.0
 numba>=0.59
+requests>=2.31

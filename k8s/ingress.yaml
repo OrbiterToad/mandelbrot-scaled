@@ -12,6 +12,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: mandelbrot
+                name: mandelbrot-coordinator
                 port:
                   number: 80

@@ -1,31 +1,38 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mandelbrot-worker
+  name: mandelbrot-coordinator
   namespace: default
 spec:
-  replicas: 4
+  replicas: 1
   selector:
     matchLabels:
-      app: mandelbrot-worker
+      app: mandelbrot-coordinator
   template:
     metadata:
       labels:
-        app: mandelbrot-worker
+        app: mandelbrot-coordinator
     spec:
       containers:
-        - name: mandelbrot-worker
+        - name: mandelbrot-coordinator
           image: mandelbrot:latest
           imagePullPolicy: Never
+          command: ["gunicorn", "coordinator:app",
+                    "--bind", "0.0.0.0:80",
+                    "--workers", "2",
+                    "--timeout", "120"]
+          env:
+            - name: WORKER_URL
+              value: "http://mandelbrot-worker"
           ports:
             - containerPort: 80
           resources:
             requests:
-              memory: 128Mi
-              cpu: 2000m
+              memory: 64Mi
+              cpu: 250m
             limits:
-              memory: 512Mi   # NumPy arrays per render ~100 MB at 1920x1080
-              cpu: 4000m
+              memory: 256Mi
+              cpu: 500m
           livenessProbe:
             httpGet:
               path: /

@@ -21,14 +21,24 @@ docker build -t "${IMAGE}" .
 echo "Importing image into cluster '${CLUSTER}'..."
 k3d image import "${IMAGE}" -c "${CLUSTER}"
 
-# ── 5. Apply manifests ────────────────────────────────────────────────────────
+# ── 5. Remove old single-pod deployment if upgrading from previous layout ─────
+kubectl delete deployment mandelbrot --ignore-not-found=true
+kubectl delete service mandelbrot    --ignore-not-found=true
+
+# ── 6. Kill all replicas immediately so apply brings up fresh pods at once ────
+# Rolling updates wait for each pod's readiness probe before proceeding.
+# Scaling to 0 first avoids that — all new pods start in parallel.
+for deploy in mandelbrot-worker mandelbrot-coordinator; do
+    kubectl get deployment "$deploy" &>/dev/null && \
+        kubectl scale deployment/"$deploy" --replicas=0 || true
+done
+
+# ── 7. Apply manifests — restores desired replica counts with the new image ───
 echo "Applying k8s manifests..."
 kubectl apply -f k8s/
 
-# ── 6. Force a rollout so pods pick up the newly-imported image ───────────────
-# imagePullPolicy: Never means pods won't restart automatically after import.
-kubectl rollout restart deployment/mandelbrot
-kubectl rollout status deployment/mandelbrot --timeout=120s
+kubectl rollout status deployment/mandelbrot-worker      --timeout=120s
+kubectl rollout status deployment/mandelbrot-coordinator --timeout=120s
 
 echo ""
 echo "Ready: http://localhost"

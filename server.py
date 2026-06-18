@@ -64,12 +64,18 @@ def _max_iter(zoom: float) -> int:
 
 
 def render_mandelbrot(posx: float, posy: float, zoom: float,
-                      width: int, height: int) -> bytes:
+                      width: int, height: int,
+                      yoffset: int = 0, fullheight: int = 0) -> bytes:
+    if fullheight <= 0:
+        fullheight = height
     max_iter = _max_iter(zoom)
     scale    = 3.5 / (zoom * width)
 
-    xs = ((np.arange(width,  dtype=np.float32) - width  * 0.5) * scale + posx)
-    ys = (posy + (height * 0.5 - np.arange(height, dtype=np.float32)) * scale)
+    xs = ((np.arange(width, dtype=np.float32) - width * 0.5) * scale + posx)
+    # Row (yoffset + i) of the full image maps to strip row i.
+    # Full-image row r: y = posy + (fullheight/2 - r) * scale
+    local_rows = np.arange(height, dtype=np.float32) + yoffset
+    ys = posy + (fullheight * 0.5 - local_rows) * scale
 
     smooth = _mandelbrot_kernel(xs, ys, max_iter)
 
@@ -99,6 +105,8 @@ def render():
         zoom   = float(request.args.get('zoom',    1.0))
         width  = int(request.args.get('width',   800))
         height = int(request.args.get('height',  600))
+        yoffset    = int(request.args.get('yoffset',    0))
+        fullheight = int(request.args.get('fullheight', 0))
         width  = max(1, min(width,  _MAX_DIM))
         height = max(1, min(height, _MAX_DIM))
         if zoom <= 0 or zoom > 1e15:
@@ -106,7 +114,7 @@ def render():
     except (TypeError, ValueError):
         abort(400)
 
-    png = render_mandelbrot(posx, posy, zoom, width, height)
+    png = render_mandelbrot(posx, posy, zoom, width, height, yoffset, fullheight)
     return png, 200, {
         'Content-Type':  'image/png',
         'Cache-Control': 'no-store',
