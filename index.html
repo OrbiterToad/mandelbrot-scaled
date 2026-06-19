@@ -30,15 +30,20 @@
       user-select: none;
       text-align: right;
       line-height: 1.7;
+      padding: 8px 10px;
+      border: 1px solid rgba(0, 210, 170, 0.45);
+      background: rgba(0, 0, 0, 0.45);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      text-shadow: 0 0 6px rgba(0, 0, 0, 0.95);
     }
     #pods .header {
-      color: rgba(0, 210, 170, 0.9);
+      color: rgba(10, 255, 210, 0.98);
       margin-bottom: 4px;
     }
-    #pods .pod { color: rgba(0, 210, 170, 0.55); }
-    #pods .ready  { color: rgba(0, 210, 170, 0.9); }
-    #pods .pending { color: rgba(255, 170, 0, 0.8); }
-    #pods .failed  { color: rgba(255, 80, 80, 0.8); }
+    #pods .pod { color: rgba(0, 240, 195, 0.9); }
+    #pods .ready  { color: rgba(80, 255, 220, 0.98); }
+    #pods .pending { color: rgba(255, 190, 70, 0.95); }
+    #pods .failed  { color: rgba(255, 95, 95, 0.95); }
     #controls {
       position: fixed;
       bottom: 14px;
@@ -47,23 +52,29 @@
       gap: 8px;
     }
     .ctrl-btn {
-      color: rgba(0, 210, 170, 0.5);
+      color: rgba(0, 235, 190, 0.92);
       font-family: 'Courier New', Courier, monospace;
       font-size: 11px;
       letter-spacing: 0.06em;
-      background: none;
-      border: 1px solid rgba(0, 210, 170, 0.25);
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(0, 210, 170, 0.72);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.45);
+      text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
       padding: 3px 7px;
       cursor: pointer;
       user-select: none;
     }
     .ctrl-btn.active {
-      color: rgba(0, 210, 170, 0.9);
-      border-color: rgba(0, 210, 170, 0.6);
+      color: rgba(10, 255, 210, 1);
+      background: rgba(0, 0, 0, 0.7);
+      border-color: rgba(10, 255, 210, 0.95);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 14px rgba(0, 210, 170, 0.4);
     }
     .ctrl-btn:disabled {
-      color: rgba(0, 210, 170, 0.28);
-      border-color: rgba(0, 210, 170, 0.15);
+      color: rgba(0, 210, 170, 0.45);
+      background: rgba(0, 0, 0, 0.35);
+      border-color: rgba(0, 210, 170, 0.3);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
       cursor: default;
     }
   </style>
@@ -75,6 +86,7 @@
   <div id="controls">
     <button id="toggle-color"      class="ctrl-btn">color</button>
     <button id="toggle-palette"    class="ctrl-btn" disabled>palette: gentle</button>
+    <button id="toggle-detail"     class="ctrl-btn">detail: 1.0x</button>
     <button id="toggle-drug"       class="ctrl-btn">drug mode</button>
     <button id="toggle-boundaries" class="ctrl-btn">boundaries</button>
   </div>
@@ -98,6 +110,8 @@
     let renderColor    = false;  // color mode of the currently displayed image
     let colorPalette   = 'gentle';
     let renderPalette  = 'gentle';
+    let detailLevel    = 1.0;
+    let renderDetail   = 1.0;
     let drugMode       = false;
     let drugHue        = 0;
     let drugRafId      = null;
@@ -193,9 +207,10 @@
       const fw = canvas.width, fh = canvas.height;
       const fc = colorMode;
       const fp = colorPalette;
+      const fd = detailLevel;
 
       try {
-        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=${fw}&height=${fh}&color=${fc ? 1 : 0}&palette=${encodeURIComponent(fp)}`;
+        const url  = `/render?posx=${fx}&posy=${fy}&zoom=${fz}&width=${fw}&height=${fh}&color=${fc ? 1 : 0}&palette=${encodeURIComponent(fp)}&detail=${fd}`;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(resp.status);
 
@@ -214,6 +229,7 @@
             renderedImg = img;
             renderColor  = fc;
             renderPalette = fp;
+            renderDetail = fd;
             renderStrips = stripsHeader
               ? stripsHeader.split(';').map(s => {
                   const [yoffset, height, pod] = s.split(',');
@@ -239,6 +255,7 @@
       if (renderW === 0) return true;
       if (colorMode !== renderColor) return true;
       if (colorMode && colorPalette !== renderPalette) return true;
+      if (Math.abs(detailLevel - renderDetail) > 0.01) return true;
       if (zoomFactor > renderZoom * 1.25 || zoomFactor < renderZoom * 0.8) return true;
       // Re-render if the view center has drifted more than half the canvas from the render center.
       const canvasScale = 3.5 / (zoomFactor * canvas.width);
@@ -354,6 +371,7 @@
     });
 
     const paletteBtn = document.getElementById('toggle-palette');
+    const detailBtn = document.getElementById('toggle-detail');
 
     function updatePaletteButton() {
       paletteBtn.disabled = !colorMode;
@@ -365,6 +383,16 @@
       if (!colorMode) return;
       colorPalette = (colorPalette === 'gentle') ? 'electric' : 'gentle';
       updatePaletteButton();
+      doFetch();
+    });
+
+    detailBtn.addEventListener('click', () => {
+      if (detailLevel < 6.0) {
+        detailLevel = Math.min(6.0, +(detailLevel + 0.5).toFixed(1));
+      } else {
+        detailLevel = 1.0;
+      }
+      detailBtn.textContent = `detail: ${detailLevel.toFixed(1)}x`;
       doFetch();
     });
 
@@ -415,6 +443,7 @@
 
     // ── Init ──────────────────────────────────────────────────────────────────
     updatePaletteButton();
+    detailBtn.textContent = `detail: ${detailLevel.toFixed(1)}x`;
     resize();
     doFetch();
   </script>
