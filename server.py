@@ -12,6 +12,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _LN2     = math.log(2.0)
 _PI      = math.pi
 _MAX_DIM = 1920
+_MAX_ITER_CAP = max(500, int(os.getenv('MANDEL_MAX_ITER', '4000')))
 
 # ---------------------------------------------------------------------------
 # Numba kernel: escape-time + smooth iteration count, parallelised over rows.
@@ -59,18 +60,22 @@ def _mandelbrot_kernel(xs: np.ndarray, ys: np.ndarray, max_iter: int) -> np.ndar
 _mandelbrot_kernel(np.zeros(2, np.float32), np.zeros(2, np.float32), 1)
 
 
-def _max_iter(zoom: float) -> int:
-    return min(500, max(100, int(100 * (1 + math.log2(max(1.0, zoom))))))
+def _max_iter(zoom: float, detail: float = 1.0) -> int:
+    # Higher detail keeps boundaries sharp at deep zoom.
+    base = 160 + int(90 * math.log2(max(1.0, zoom)))
+    scaled = int(base * detail)
+    return min(_MAX_ITER_CAP, max(100, scaled))
 
 
 def render_mandelbrot(posx: float, posy: float, zoom: float,
                       width: int, height: int,
                       yoffset: int = 0, fullheight: int = 0,
                       color: bool = False,
-                      palette: str = 'gentle') -> bytes:
+                      palette: str = 'gentle',
+                      detail: float = 1.0) -> bytes:
     if fullheight <= 0:
         fullheight = height
-    max_iter = _max_iter(zoom)
+    max_iter = _max_iter(zoom, detail)
     scale    = 3.5 / (zoom * width)
 
     xs = ((np.arange(width, dtype=np.float64) - width * 0.5) * scale + posx)
@@ -131,8 +136,10 @@ def render():
         fullheight = int(request.args.get('fullheight', 0))
         color      = request.args.get('color', '0') == '1'
         palette    = request.args.get('palette', 'gentle').lower()
+        detail     = float(request.args.get('detail', 1.0))
         if palette not in ('gentle', 'electric'):
             palette = 'gentle'
+        detail = min(6.0, max(0.75, detail))
         width  = max(1, min(width,  _MAX_DIM))
         height = max(1, min(height, _MAX_DIM))
         if zoom <= 0 or zoom > 1e300:
@@ -142,7 +149,7 @@ def render():
 
     png = render_mandelbrot(
         posx, posy, zoom, width, height,
-        yoffset, fullheight, color, palette,
+        yoffset, fullheight, color, palette, detail,
     )
     return png, 200, {
         'Content-Type':  'image/png',
